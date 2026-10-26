@@ -230,6 +230,8 @@ label.f input:focus,label.f select:focus{outline:none;border-color:var(--ink)}
 .phslot .rm{position:absolute;top:-8px;right:-8px;width:22px;height:22px;border-radius:50%;border:0;background:var(--ink);color:#fff;font-size:13px;line-height:22px;cursor:pointer}
 .phslot .main{position:absolute;left:0;bottom:0;right:0;background:rgba(0,0,0,.6);color:#fff;font-size:10px;padding:2px 0}
 .gal{display:flex;gap:6px;margin-top:6px}.gal img{width:36px;height:57px;object-fit:cover;cursor:pointer;border:1px solid var(--line)}.gal img.on{border-color:var(--ink)}
+.btn.del{color:var(--red);border-color:var(--line2)}
+.btn.del.arm{background:var(--red);color:#fff;border-color:var(--red)}
 .toast{position:fixed;left:50%;bottom:calc(var(--nav-h) + 20px + env(safe-area-inset-bottom,0px));transform:translate(-50%,10px);background:var(--ink);color:#fff;padding:10px 16px;font-size:13px;z-index:60;opacity:0;transition:.2s;pointer-events:none;max-width:calc(100% - 32px);text-align:center;white-space:pre-line}
 .toast.on{opacity:1;transform:translate(-50%,0)}
 
@@ -373,7 +375,7 @@ const fmtN=n=>Math.round(n).toLocaleString('uk-UA').replace(/ /g,' ');
 const can=p=>ROLES[S.role].perm.includes(p);
 const isClient=()=>S.role==='client';const MY=9;
 let PI=new Map(S.products.map(p=>[p.id,p]));
-S.products.forEach(p=>{if(p.photo)TH[p.id]=p.photo});
+S.products.forEach(p=>{if(p.photo)TH[p.id]=p.photo;else if(p.noPhoto)delete TH[p.id]});
 const prod=id=>PI.get(id);
 const cli=id=>S.clients.find(c=>c.id===id);
 const oSum=o=>o.lines.reduce((a,l)=>a+l.price*l.qty,0);
@@ -429,7 +431,7 @@ function drawHead(){
   else $('#catSum').hidden=true;
   $('#subBar').innerHTML=TAB==='catalog'?filterBar():TAB==='orders'?orderBar():'';
 }
-function render(){if(TAB!=='scan')stopScan();drawNav();drawHead();const v={catalog:vCatalog,orders:vOrders,pay:vPay,scan:vScan,journal:vJournal,stats:vStats,export:vExport}[TAB];$('#view').innerHTML=v();save()}
+function render(){if(TAB!=='scan')stopScan();drawNav();drawHead();const v={catalog:vCatalog,orders:vOrders,pay:vPay,scan:vScan,journal:vJournal,stats:vStats,export:vExport}[TAB];$('#view').innerHTML=v();if(TAB==='scan')attachScanVideo();save()}
 
 /* ---------- фільтри каталогу (як в Excel) ---------- */
 const CF={grp:[],cat:[],size:[],state:[]};
@@ -437,7 +439,7 @@ const CF_LABEL={grp:'Розділ',cat:'Категорія',size:'Розмір',
 const STATES={zero:'Немає вільних',low:'Закінчується',last:'Останній розмір',ok:'Є в наявності',sale:'Зі знижкою'};
 let Q='',LIMIT=60;
 function pState(p){const fs=p.sizes.filter(s=>free(p,s)>0);const r=[];if(!fs.length)r.push('zero');else{r.push('ok');if(p.sizes.some(s=>free(p,s)<=1))r.push('low');if(p.sizes.length>1&&fs.length===1)r.push('last')}if(p.old)r.push('sale');return r}
-function baseList(){let L=S.products;if(isClient())L=L.filter(p=>p.onSite);if(Q){const q=Q.toLowerCase();const m=q.match(/^kl0*(\d+)/);L=L.filter(p=>m?String(p.id)===m[1]:(p.name+' '+p.art+' '+p.code+' '+p.cat).toLowerCase().includes(q))}return L}
+function baseList(){let L=S.products.filter(p=>!p.deleted);if(isClient())L=L.filter(p=>p.onSite);if(Q){const q=Q.toLowerCase();const m=q.match(/^kl0*(\d+)/);L=L.filter(p=>m?String(p.id)===m[1]:(p.name+' '+p.art+' '+p.code+' '+p.cat).toLowerCase().includes(q))}return L}
 function passes(p,skip){return(skip==='grp'||!CF.grp.length||CF.grp.includes(p.grp))&&(skip==='cat'||!CF.cat.length||CF.cat.includes(p.cat))&&(skip==='size'||!CF.size.length||CF.size.some(s=>p.sizes.includes(s)&&free(p,s)>0))&&(skip==='state'||!CF.state.length||CF.state.some(s=>pState(p).includes(s)))}
 function catList(){return baseList().filter(p=>passes(p))}
 function cfOptions(k){const L=baseList().filter(p=>passes(p,k));const m=new Map();
@@ -480,7 +482,7 @@ function openProd(id){
   const p=prod(id);
   if(LQ.pid!==id){LQ={pid:id};p.sizes.forEach(s=>LQ[s]=p.qty[s]||0)}
   const lt=p.sizes.reduce((a,s)=>a+(LQ[s]||0),0);
-  const T={in:'Прихід',out:'Відвантаження',ret:'Повернення',adj:'Коригування',price:'Ціни'};
+  const T={in:'Прихід',out:'Відвантаження',ret:'Повернення',adj:'Коригування',price:'Ціни',edit:'Картка',del:'Видалено'};
   const hist=S.ops.filter(o=>o.pid===id&&(o.t!=='price'||can('cost')));
   sheet((p.art?'арт. '+esc(p.art)+' · ':'')+p.code,esc(p.name),`
   <div class="skuhead"><dl class="kv">
@@ -491,6 +493,7 @@ function openProd(id){
     <dt>Залишок</dt><dd>${isClient()?'вільно '+tFree(p):tQty(p)+' од., вільно '+tFree(p)}</dd>
     <dt>На сайті</dt><dd>${p.isNew?'з\u2019явиться після синхронізації з OpenCart':`<a href="${p.url}" target="_blank" rel="noopener" style="color:var(--ink)">відкрити ↗</a>`}${isClient()?'':p.onSite?' · показується':' · приховано'}</dd>
   </dl><div>${TH[p.id]?`<img id="pBig" src="${TH[p.id]}" alt="">`:'<span style="display:block;width:100%;height:100%;background:var(--tint)"></span>'}${(p.photos||[]).length>1?`<div class="gal">${p.photos.map((x,i)=>`<img src="${x}" alt="" data-act="gal" data-i="${i}" class="${i?'':'on'}">`).join('')}</div>`:''}</div></div>
+  ${canEditSku()||can('cost')?`<div class="acts" style="margin-top:0">${canEditSku()?`<button class="btn ghost" data-act="editSku" data-id="${p.id}">Коригувати картку</button>`:''}${can('cost')?`<button class="btn ghost del" data-act="delSku" data-id="${p.id}" id="delBtn">Видалити картку</button>`:''}</div>`:''}
   <div class="tw"><table><thead><tr><th>Розмір</th>${isClient()?'':'<th class="n">На складі</th><th class="n">Резерв</th>'}<th class="n">Вільно</th>${Object.keys(p.extra).length&&(can('price')||isClient())?'<th class="n">Доплата</th>':''}${isClient()?'':'<th class="bc">Штрихкод</th>'}${can('stock')?'<th class="n">Етикеток</th>':''}</tr></thead><tbody>
   ${p.sizes.map(s=>`<tr><td><b>${esc(s)}</b></td>${isClient()?'':`<td class="n">${p.qty[s]||0}</td><td class="n">${reserved(p.id,s)||'—'}</td>`}<td class="n"><b>${free(p,s)}</b></td>${Object.keys(p.extra).length&&(can('price')||isClient())?`<td class="n">${p.extra[s]?'+'+p.extra[s]:'—'}</td>`:''}${isClient()?'':`<td class="bc bcmini">${bcSvg(bcText(p,s),{height:24,width:1.1,fontSize:9})}</td>`}${can('stock')?`<td class="n"><span class="qstep"><button data-act="lqp" data-s="${esc(s)}" data-d="-1" aria-label="Менше етикеток">−</button><span data-lq="${esc(s)}">${LQ[s]||0}</span><button data-act="lqp" data-s="${esc(s)}" data-d="1" aria-label="Більше етикеток">+</button></span></td>`:''}</tr>`).join('')}
   </tbody></table></div>
@@ -504,7 +507,7 @@ function openProd(id){
     <div class="acts" style="margin:0;align-items:center"><button class="btn" data-act="prices" data-id="${p.id}">Зберегти ціни</button><span class="hint" id="pMk">націнка ${p.cost?Math.round((p.price/p.cost-1)*100):0}% · опт ${p.cost?Math.round((p.opt/p.cost-1)*100):0}%</span></div>
     <p class="hint" style="margin:8px 0 0">Роздрібна, стара й оптова ціни йдуть на сайт і в прайс для опту. Собівартість бачать лише власник і бухгалтер.</p></div>`:''}
   ${isClient()?`<div class="acts"><button class="btn red" data-act="newOrder" data-pid="${p.id}">Замовити</button></div>`:''}
-  ${isClient()?'':`<h2 class="sec">Історія</h2>${hist.map(o=>`<div class="row"><span class="tag">${T[o.t]}</span><div class="grow"><div>${o.t==='price'?esc(o.note):esc(o.size)+' · '+(o.t==='adj'?'залишок '+o.q:(o.t==='out'?'−':'+')+o.q+' од.')}</div><div class="s2">${o.t==='price'?'':esc(o.note)+' · '}${o.who}</div></div><span class="hint">${dShort(o.d)}</span></div>`).join('')||'<div class="hint">Руху ще не було.</div>'}`}`,true);
+  ${isClient()?'':`<h2 class="sec">Історія</h2>${hist.map(o=>`<div class="row"><span class="tag">${T[o.t]}</span><div class="grow"><div>${['price','edit','del'].includes(o.t)?esc(o.note):esc(o.size)+' · '+(o.t==='adj'?'залишок '+o.q:(o.t==='out'?'−':'+')+o.q+' од.')}</div><div class="s2">${['price','edit','del'].includes(o.t)?'':esc(o.note)+' · '}${o.who}</div></div><span class="hint">${dShort(o.d)}</span></div>`).join('')||'<div class="hint">Руху ще не було.</div>'}`}`,true);
 }
 
 /* ---------- Нове SKU ---------- */
@@ -512,25 +515,32 @@ const GRIDS=[['w','Жіночі 40–52','40,42,44,46,48,50+100,52+100'],['m','�
 let NS=null;
 const nextSkuId=()=>Math.max(...S.products.filter(p=>p.id<9000).map(p=>p.id))+1;
 function parseGrid(t){const sizes=[],extra={};(t||'').split(',').map(x=>x.trim()).filter(Boolean).forEach(x=>{const m=x.match(/^([^+]+?)\s*(?:\+\s*(\d+))?$/);if(m){sizes.push(m[1].trim());if(m[2])extra[m[1].trim()]=+m[2]}});if(!sizes.length)sizes.push('—');return {sizes,extra}}
-function newSku(){const cats=[...new Set(S.products.map(p=>p.cat))].sort((a,b)=>a.localeCompare(b,'uk'));
-  NS=NS||{grid:'w',photos:[]};const nextId=nextSkuId();
-  sheet('KL'+String(nextId).padStart(4,'0')+' · штрихкод присвоїться сам','Нове SKU',`
+const canEditSku=()=>can('stock')||can('cost');
+const gridText=p=>p.sizes[0]==='—'?'':p.sizes.map(s=>p.extra[s]?s+'+'+p.extra[s]:s).join(',');
+function newSku(editId){const cats=[...new Set(S.products.map(p=>p.cat))].sort((a,b)=>a.localeCompare(b,'uk'));
+  const E=editId?prod(editId):null;
+  if(E)NS={edit:E.id,grid:E.sizes[0]==='—'?'one':'own',photos:(E.photos&&E.photos.length?E.photos.slice():TH[E.id]?[TH[E.id]]:[])};
+  else if(!NS||NS.edit)NS={grid:'w',photos:[]};
+  const nextId=nextSkuId();
+  sheet(E?E.code+(E.art?' · арт. '+esc(E.art):''):'KL'+String(nextId).padStart(4,'0')+' · штрихкод присвоїться сам',E?'Коригування картки':'Нове SKU',`
   <div class="hint" style="margin-bottom:4px">Фото, до 3 шт · перше — головне</div><div class="phs" id="nPh"></div><input id="nP" type="file" accept="image/*" multiple hidden>
-  <label class="f" style="margin-bottom:10px">Назва<input id="nN" placeholder="напр. Жіноча лляна вишиванка «Калина»" autocomplete="off"></label>
-  <div class="f2"><label class="f">Артикул<input id="nA" placeholder="напр. KS0203160" autocomplete="off"></label><label class="f">Категорія<select id="nC">${cats.map(c=>`<option ${c==='Вишиті жіночі сорочки'?'selected':''}>${esc(c)}</option>`).join('')}</select></label></div>
-  <div class="f2"><label class="f">Розмірна сітка<select id="nG">${GRIDS.map(([k,l])=>`<option value="${k}" ${k===NS.grid?'selected':''}>${l}</option>`).join('')}</select></label><label class="f" id="nOwnL" ${NS.grid==='own'?'':'hidden'}>Розміри через кому, доплата через «+»<input id="nOwn" placeholder="напр. 42,44,46,48+100"></label></div>
+  <label class="f" style="margin-bottom:10px">Назва<input id="nN" placeholder="напр. Жіноча лляна вишиванка «Калина»" autocomplete="off" value="${E?esc(E.name):''}"></label>
+  <div class="f2"><label class="f">Артикул<input id="nA" placeholder="напр. KS0203160" autocomplete="off" value="${E?esc(E.art||''):''}"></label><label class="f">Категорія<select id="nC">${cats.map(c=>`<option ${c===(E?E.cat:'Вишиті жіночі сорочки')?'selected':''}>${esc(c)}</option>`).join('')}</select></label></div>
+  <div class="f2"><label class="f">Розмірна сітка<select id="nG">${GRIDS.map(([k,l])=>`<option value="${k}" ${k===NS.grid?'selected':''}>${l}</option>`).join('')}</select></label><label class="f" id="nOwnL" ${NS.grid==='own'?'':'hidden'}>Розміри через кому, доплата через «+»<input id="nOwn" placeholder="напр. 42,44,46,48+100" value="${E?esc(gridText(E)):''}"></label></div>
+  ${E?'<p class="hint" style="margin:-4px 0 10px">Розмір можна додати будь-коли; прибрати — лише якщо його немає на складі й у резерві. Кількість змінюється через «Операція» в картці.</p>':''}
   <div id="nQty"></div>
-  ${can('cost')?`<div class="f2"><label class="f">Собівартість, грн<input id="nCo" type="number" min="0" inputmode="numeric"></label><label class="f">Ціна продажу (роздріб), грн<input id="nR" type="number" min="0" inputmode="numeric"></label></div>
-  <div class="f2"><label class="f">Оптова ціна, грн<input id="nO" type="number" min="0" inputmode="numeric" placeholder="за замовчуванням −22%"></label><label class="f">Стара ціна (для знижки), грн<input id="nOld" type="number" min="0" inputmode="numeric" placeholder="без знижки"></label></div>`:'<p class="hint">Ціни внесе власник або бухгалтер — до того модель буде з позначкою «без ціни».</p>'}
-    <label style="display:flex;gap:8px;align-items:center;font-size:13px;margin:4px 0 10px"><input id="nSite" type="checkbox" checked style="width:16px;height:16px;accent-color:var(--ink)"> Показувати на сайті, коли з’явиться залишок</label>
-  <div class="acts"><button class="btn red" data-act="saveSku">Зберегти SKU</button><button class="btn ghost" data-act="close">Скасувати</button></div>`);
+  ${E?'':can('cost')?`<div class="f2"><label class="f">Собівартість, грн<input id="nCo" type="number" min="0" inputmode="numeric"></label><label class="f">Ціна продажу (роздріб), грн<input id="nR" type="number" min="0" inputmode="numeric"></label></div>
+  <div class="f2"><label class="f">Оптова ціна, грн<input id="nO" type="number" min="0" inputmode="numeric" placeholder="за замовчуванням −22%"></label><label class="f">Стара ціна (для знижки), грн<input id="nOld" type="number" min="0" inputmode="numeric" placeholder="без знижки"></label></div>`:'<p class="hint">Ціни внесе власник або бухгалтер — до того модель буде з позначкою «без ціни».</p>'}${E&&can('cost')?'<p class="hint">Ціни змінюються в блоці «Ціни» в картці товару.</p>':''}
+    <label style="display:flex;gap:8px;align-items:center;font-size:13px;margin:4px 0 10px"><input id="nSite" type="checkbox" ${!E||E.onSite?'checked':''} style="width:16px;height:16px;accent-color:var(--ink)"> Показувати на сайті, коли з’явиться залишок</label>
+  <div class="acts"><button class="btn red" data-act="saveSku">${E?'Зберегти зміни':'Зберегти SKU'}</button><button class="btn ghost" data-act="${E?'backProd':'close'}" data-id="${E?E.id:''}">Скасувати</button></div>`);
   drawNQty();drawPh();
 }
 function drawPh(){const el=$('#nPh');if(!el)return;el.innerHTML=[0,1,2].map(i=>NS.photos[i]?`<div class="phslot"><img src="${NS.photos[i]}" alt="">${i===0?'<span class="main">головне</span>':''}<button class="rm" data-act="phrm" data-i="${i}" aria-label="Прибрати фото">×</button></div>`:`<div class="phslot" data-act="phadd" role="button" tabindex="0">+ Фото</div>`).join('')}
 function nsGrid(){const g=$('#nG').value;NS.grid=g;return g==='own'?parseGrid($('#nOwn').value):parseGrid((GRIDS.find(x=>x[0]===g)||[])[2])}
-function drawNQty(){const {sizes,extra}=nsGrid();const old={};document.querySelectorAll('[data-nq]').forEach(i=>old[i.dataset.nq]=i.value);
+function drawNQty(){if(NS&&NS.edit){$('#nQty').innerHTML='';return}const {sizes,extra}=nsGrid();const old={};document.querySelectorAll('[data-nq]').forEach(i=>old[i.dataset.nq]=i.value);
   $('#nQty').innerHTML=`<div class="hint" style="margin-bottom:4px">Прихід по розмірах, шт (можна лишити 0 і провести пізніше)</div><div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px">${sizes.map(s=>`<label class="f" style="width:72px">${s==='—'?'кількість':esc(s)}${extra[s]?' <span style="color:var(--soft)">+'+extra[s]+'</span>':''}<input data-nq="${esc(s)}" type="number" min="0" inputmode="numeric" value="${old[s]||0}"></label>`).join('')}</div>`}
 function saveSku(){const name=$('#nN').value.trim();if(name.length<3)return toast('Вкажіть назву моделі');
+  if(NS&&NS.edit)return saveSkuEdit(name);
   const {sizes,extra}=nsGrid();const qty={};sizes.forEach(s=>{const i=document.querySelector(`[data-nq="${CSS.escape(s)}"]`);qty[s]=Math.max(0,parseInt(i&&i.value)||0)});
   const v=id=>{const e=$(id);return e?Math.max(0,parseInt(e.value)||0):0};const price=v('#nR'),cost=v('#nCo');let opt=v('#nO');if(!opt&&price)opt=Math.round(price*.78/5)*5;const old=v('#nOld');
   if(old&&old<=price)return toast('Стара ціна має бути більшою за ціну продажу');
@@ -539,6 +549,26 @@ function saveSku(){const name=$('#nN').value.trim();if(name.length<3)return toas
   sizes.forEach(s=>{p.qty[s]=qty[s];if(qty[s])S.ops.unshift({d:nowStr(),pid:id,size:s,q:qty[s],t:'in',who,note:'Прихід при створенні SKU'})});
   S.products.unshift(p);PI.set(id,p);if(p.photo)TH[id]=p.photo;log(`Нове SKU ${p.code}: ${name}`);NS=null;changed();
   Object.keys(CF).forEach(k=>CF[k]=[]);Q='';$('#q').value='';render();openProd(id);toast(`SKU ${p.code} створено${tQty(p)?' · прихід '+tQty(p)+' шт':''}`)}
+function saveSkuEdit(name){const p=prod(NS.edit),who=ROLES[S.role].person;const {sizes,extra}=nsGrid();
+  const gone=p.sizes.filter(s=>!sizes.includes(s));const busy=gone.filter(s=>(p.qty[s]||0)>0||reserved(p.id,s)>0);
+  if(busy.length)return toast(`Не можна прибрати розмір ${busy.join(', ')}: він є на складі або в резерві`);
+  const ch=[];const art=$('#nA').value.trim(),cat=$('#nC').value,onSite=$('#nSite').checked;
+  if(name!==p.name)ch.push('назва');if(art!==(p.art||''))ch.push(`артикул ${p.art||'—'} → ${art||'—'}`);if(cat!==p.cat)ch.push(`категорія → ${cat}`);
+  if(gridText({sizes,extra})!==gridText(p))ch.push(`розміри: ${sizes[0]==='—'?'один розмір':sizes.join(', ')}`);if(onSite!==p.onSite)ch.push(onSite?'показано на сайті':'приховано на сайті');
+  const old=JSON.stringify(p.photos&&p.photos.length?p.photos:TH[p.id]?[TH[p.id]]:[]);if(old!==JSON.stringify(NS.photos))ch.push('фото');
+  if(!ch.length){toast('Змін немає');return openProd(p.id)}
+  const qty={};sizes.forEach(s=>qty[s]=p.qty[s]||0);
+  Object.assign(p,{name,art,cat,grp:GROUP(cat),onSite,sizes,extra,qty,photos:NS.photos.slice(),photo:NS.photos[0]||'',noPhoto:!NS.photos.length});
+  if(p.photo)TH[p.id]=p.photo;else delete TH[p.id];
+  S.ops.unshift({d:nowStr(),pid:p.id,size:'',q:0,t:'edit',who,note:ch.join(', ')});log(`Картку ${p.code} змінено: ${ch.join(', ')}`);
+  NS=null;LQ={};changed();render();openProd(p.id);toast('Картку збережено')}
+function delSku(id,btn){const p=prod(id);
+  const inOrders=S.orders.some(o=>['new','conf','packed','sent'].includes(o.st)&&o.lines.some(l=>l.pid===id));
+  if(tQty(p)>0)return toast(`Спершу обнуліть залишок: на складі ${tQty(p)} од.\nКоригування → 0 по кожному розміру`);
+  if(inOrders)return toast('Модель є в активному замовленні — видалити не можна');
+  if(!btn.classList.contains('arm')){btn.classList.add('arm');btn.textContent='Точно видалити? Натисніть ще раз';clearTimeout(btn._t);btn._t=setTimeout(()=>{btn.classList.remove('arm');btn.textContent='Видалити картку'},3500);return}
+  p.deleted=true;p.onSite=false;S.ops.unshift({d:nowStr(),pid:id,size:'',q:0,t:'del',who:ROLES[S.role].person,note:'Картку видалено'});log(`Картку ${p.code} видалено: ${p.name}`);
+  changed();closeSheet();render();toast(`Картку ${p.code} видалено`)}
 function readPhotos(files){[...files].slice(0,3-NS.photos.length).forEach(f=>{const r=new FileReader();r.onload=()=>{const im=new Image();im.onload=()=>{if(NS.photos.length>=3)return;const W=240,H=360,c=document.createElement('canvas');c.width=W;c.height=H;const g=c.getContext('2d');const k=Math.max(W/im.width,H/im.height),w=im.width*k,h=im.height*k;g.drawImage(im,(W-w)/2,(H-h)/2,w,h);NS.photos.push(c.toDataURL('image/webp',.75));drawPh()};im.src=r.result};r.readAsDataURL(f)})}
 
 /* ---------- Етикетки 58×40 ---------- */
@@ -596,7 +626,7 @@ let D=null;
 function newOrder(pid){D={client:isClient()?MY:1,src:isClient()?'opt':'phone',pay:isClient()?'iban':'cod',np:'',lines:[],pick:pid||'',pq:''};drawDraft()}
 function drawDraft(){
   const c=cli(D.client),opt=c.type==='opt';const sum=D.lines.reduce((a,l)=>a+l.price*l.qty,0);
-  const q=D.pq.toLowerCase();const found=q.length>1?S.products.filter(p=>p.onSite&&tFree(p)>0&&(p.name+' '+p.code+' '+p.art).toLowerCase().includes(q)).slice(0,8):[];
+  const q=D.pq.toLowerCase();const found=q.length>1?S.products.filter(p=>!p.deleted&&p.onSite&&tFree(p)>0&&(p.name+' '+p.code+' '+p.art).toLowerCase().includes(q)).slice(0,8):[];
   const P=D.pick?prod(+D.pick):null;
   sheet(isClient()?'Оптове замовлення':'Ручне замовлення','Нове замовлення',`
   ${isClient()?'':`<div class="f2"><label class="f">Клієнт<select id="dC">${S.clients.map(x=>`<option value="${x.id}" ${x.id===D.client?'selected':''}>${esc(x.name)}${x.type==='opt'?' (опт)':''}</option>`).join('')}</select></label><label class="f">Канал<select id="dS">${Object.entries(SRC).filter(([k])=>k!=='site').map(([k,v])=>`<option value="${k}" ${k===D.src?'selected':''}>${v}</option>`).join('')}</select></label></div>`}
@@ -627,49 +657,50 @@ function vPay(){
 /* ---------- Сканер ---------- */
 let RD=null;
 function vScan(){const ex=S.products[5];return `<div class="scanbox" id="scanBox"><video id="scanVideo" playsinline muted hidden></video><span>Наведіть камеру на штрихкод етикетки</span></div>
-  <div class="acts" style="max-width:420px;margin:0 auto 10px"><button class="btn red" data-act="cam" id="camBtn">Увімкнути камеру</button><button class="btn ghost" data-act="snap">Сфотографувати</button></div>
+  <div class="acts" style="max-width:420px;margin:0 auto 10px"><button class="btn red" data-act="cam" id="camBtn">Увімкнути камеру</button></div>
   <div id="scanMsg" class="hint" style="text-align:center;min-height:18px;margin:-4px 0 8px"></div>
-  <input id="snapIn" type="file" accept="image/*" capture="environment" hidden>
   <div class="search" style="max-width:420px;margin:0 auto"><div class="qwrap"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7V4h3M21 7V4h-3M3 17v3h3M21 17v3h-3"/></svg><input id="scanIn" placeholder="або введіть код, напр. ${bcText(ex,ex.sizes[0])}"></div><button class="btn" data-act="scan">Знайти</button></div>
-  <p class="hint" style="text-align:center;margin-top:10px">Штрихкод = модель + розмір. Скан відкриває картку: залишок, резерв, вільно по розміру.<br>Камера працює в Chrome і Safari; якщо браузер не дає камеру — «Сфотографувати».</p>`}
+  <p class="hint" style="text-align:center;margin-top:10px">Штрихкод = модель + розмір. Скан відкриває картку: залишок, резерв, вільно по розміру.<br>Камера вмикається один раз і працює, поки ви на цій вкладці.</p>`}
 function quagga(src){return new Promise(res=>{if(!window.Quagga)return res(null);try{Quagga.decodeSingle({src,numOfWorkers:0,locate:true,inputStream:{size:1280},locator:{patchSize:'medium',halfSample:true},decoder:{readers:['code_128_reader','ean_reader','code_39_reader']}},r=>res(r&&r.codeResult?r.codeResult.code:null))}catch(e){res(null)}})}
 function zxReader(){if(!window.ZXing)return null;return new ZXing.BrowserBarcodeReader(300)}
-let SCAN_STREAM=null,SCAN_TIMER=null;
+let SCAN_STREAM=null,SCAN_TIMER=null,SCAN_PAUSED=false,LAST_CODE='',LAST_AT=0;
+function attachScanVideo(){const v=$('#scanVideo');if(!v||!SCAN_STREAM)return;if(v.srcObject!==SCAN_STREAM){v.srcObject=SCAN_STREAM;v.play().catch(()=>{})}v.hidden=false;$('#scanBox').classList.add('live');$('#camBtn').textContent='Зупинити камеру';scanMsg('Наведіть на штрихкод, тримайте 10–15 см від етикетки')}
+function autoCam(){if(SCAN_STREAM)return attachScanVideo();try{navigator.permissions.query({name:'camera'}).then(r=>{if(r.state==='granted'&&TAB==='scan'&&!SCAN_STREAM)startScan()}).catch(()=>{})}catch(e){}}
 const scanMsg=(t,bad)=>{const m=$('#scanMsg');if(m){m.textContent=t;m.style.color=bad?'var(--red)':''}};
 function camError(e){const n=e&&e.name;
-  if(window.self!==window.top&&(n==='NotAllowedError'||n==='SecurityError'||!n))return 'У цьому вікні браузер не дає камеру. Відкрийте демо-файл у Chrome або Safari, або натисніть «Сфотографувати».';
-  if(n==='NotAllowedError')return 'Немає дозволу на камеру. Дозвольте камеру в налаштуваннях сайту/браузера або натисніть «Сфотографувати».';
-  if(n==='NotFoundError'||n==='OverconstrainedError')return 'Камеру не знайдено. Натисніть «Сфотографувати».';
+  if(window.self!==window.top&&(n==='NotAllowedError'||n==='SecurityError'||!n))return 'У цьому вікні браузер не дає камеру. Відкрийте сайт у Chrome або Safari.';
+  if(n==='NotAllowedError')return 'Немає дозволу на камеру. Дозвольте камеру в налаштуваннях сайту/браузера';
+  if(n==='NotFoundError'||n==='OverconstrainedError')return 'Камеру не знайдено.';
   if(n==='NotReadableError')return 'Камера зайнята іншою програмою. Закрийте її і спробуйте ще раз.';
-  return 'Камеру не вдалося увімкнути ('+(n||'невідома причина')+'). Натисніть «Сфотографувати».'}
+  return 'Камеру не вдалося увімкнути ('+(n||'невідома причина')+').'}
 async function startScan(){
   if(SCAN_STREAM||RD)return stopScan();
   if(!window.isSecureContext&&location.protocol!=='file:')return scanMsg('Камера працює лише на https або з файлу.',true);
-  if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia)return scanMsg('Цей браузер не дає камеру (часто так у вбудованому переглядачі месенджера). Відкрийте файл у Chrome або Safari, або натисніть «Сфотографувати».',true);
-  const v=$('#scanVideo');scanMsg('Вмикаю камеру…');
+  if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia)return scanMsg('Цей браузер не дає камеру (часто так у вбудованому переглядачі месенджера). Відкрийте файл у Chrome або Safari,',true);
+  let v=$('#scanVideo');scanMsg('Вмикаю камеру…');SCAN_PAUSED=false;
   try{SCAN_STREAM=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'},width:{ideal:1280},height:{ideal:720}},audio:false})}
   catch(e){SCAN_STREAM=null;return scanMsg(camError(e),true)}
   v.srcObject=SCAN_STREAM;v.hidden=false;try{await v.play()}catch(e){}
   $('#scanBox').classList.add('live');$('#camBtn').textContent='Зупинити камеру';scanMsg('Наведіть на штрихкод, тримайте 10–15 см від етикетки');
   // 1) вбудований розпізнавач браузера (Android Chrome, macOS) — найкраще читає
   let bd=null;try{if('BarcodeDetector' in window){const f=await BarcodeDetector.getSupportedFormats();if(f.includes('code_128'))bd=new BarcodeDetector({formats:['code_128','ean_13','code_39','qr_code'].filter(x=>f.includes(x))})}}catch(e){bd=null}
-  if(bd){const tick=async()=>{if(!SCAN_STREAM)return;try{const r=await bd.detect(v);if(r&&r.length)return onCode(r[0].rawValue)}catch(e){}SCAN_TIMER=setTimeout(tick,180)};tick();return}
+  if(bd){const tick=async()=>{if(!SCAN_STREAM)return;v=$('#scanVideo')||v;if(SCAN_PAUSED||!v.videoWidth){SCAN_TIMER=setTimeout(tick,250);return}try{const r=await bd.detect(v);if(r&&r.length)onCode(r[0].rawValue)}catch(e){}SCAN_TIMER=setTimeout(tick,180)};tick();return}
   // 2) Quagga2: сам знаходить штрихкод у кадрі (навіть дрібний чи під кутом)
   if(window.Quagga){const c=document.createElement('canvas'),g=c.getContext('2d');let busy=false;
-    const tick=async()=>{if(!SCAN_STREAM)return;if(v.videoWidth&&!busy){busy=true;const k=Math.min(1,1280/v.videoWidth);c.width=Math.round(v.videoWidth*k);c.height=Math.round(v.videoHeight*k);g.drawImage(v,0,0,c.width,c.height);
+    const tick=async()=>{if(!SCAN_STREAM)return;v=$('#scanVideo')||v;if(SCAN_PAUSED){SCAN_TIMER=setTimeout(tick,250);return}if(v.videoWidth&&!busy){busy=true;const k=Math.min(1,1280/v.videoWidth);c.width=Math.round(v.videoWidth*k);c.height=Math.round(v.videoHeight*k);g.drawImage(v,0,0,c.width,c.height);
         let code=await quagga(c.toDataURL('image/jpeg',.85));
         if(!code&&window.ZXing){const rd=new ZXing.MultiFormatOneDReader(new Map([[ZXing.DecodeHintType.TRY_HARDER,true]]));for(const B of [ZXing.GlobalHistogramBinarizer,ZXing.HybridBinarizer]){try{code=rd.decode(new ZXing.BinaryBitmap(new B(new ZXing.HTMLCanvasElementLuminanceSource(c)))).getText();break}catch(e){}}}
-        busy=false;if(code&&SCAN_STREAM)return onCode(code)}
+        busy=false;if(code&&SCAN_STREAM)onCode(code)}
       SCAN_TIMER=setTimeout(tick,120)};tick();return}
   // 3) запасний — ZXing
-  if(!window.ZXing){stopScan();return scanMsg('Сканер не завантажився. Натисніть «Сфотографувати».',true)}
+  if(!window.ZXing){stopScan();return scanMsg('Сканер не завантажився.',true)}
   const reader=new ZXing.MultiFormatOneDReader(new Map([[ZXing.DecodeHintType.TRY_HARDER,true]]));const c=document.createElement('canvas'),g=c.getContext('2d',{willReadFrequently:true});
   let pass=0;
   const tick=()=>{if(!SCAN_STREAM)return;const vw=v.videoWidth,vh=v.videoHeight;if(vw){
       // чергуємо: весь кадр / центр кадру, збільшений удвічі (дрібні або далекі етикетки)
       const crop=pass++%2===1;const sx=crop?vw*.15:0,sy=crop?vh*.2:0,sw=crop?vw*.7:vw,sh=crop?vh*.6:vh;const k=crop?Math.min(2,1600/sw):Math.min(1,1280/vw);
       c.width=Math.round(sw*k);c.height=Math.round(sh*k);g.imageSmoothingEnabled=true;g.drawImage(v,sx,sy,sw,sh,0,0,c.width,c.height);
-      for(const B of [ZXing.HybridBinarizer,ZXing.GlobalHistogramBinarizer]){try{const bmp=new ZXing.BinaryBitmap(new B(new ZXing.HTMLCanvasElementLuminanceSource(c)));const r=reader.decode(bmp);if(r)return onCode(r.getText())}catch(e){}}}
+      for(const B of [ZXing.HybridBinarizer,ZXing.GlobalHistogramBinarizer]){try{const bmp=new ZXing.BinaryBitmap(new B(new ZXing.HTMLCanvasElementLuminanceSource(c)));const r=reader.decode(bmp);if(r){onCode(r.getText());break}}catch(e){}}}
     SCAN_TIMER=setTimeout(tick,120)};tick();
 }
 function stopScan(){clearTimeout(SCAN_TIMER);SCAN_TIMER=null;if(SCAN_STREAM){SCAN_STREAM.getTracks().forEach(t=>t.stop());SCAN_STREAM=null}if(RD){try{RD.reset()}catch(e){}RD=null}const v=$('#scanVideo');if(v){v.srcObject=null;v.hidden=true;$('#scanBox').classList.remove('live');$('#camBtn').textContent='Увімкнути камеру'}}
@@ -677,10 +708,11 @@ function snapDecode(f){if(!f)return;scanMsg('Розпізнаю…');const fr=ne
   if(!code){const r=zxReader();if(r)try{code=(await r.decodeFromImageUrl(url)).getText()}catch(e){}}
   if(code){scanMsg('');onCode(code)}else scanMsg('Штрихкод не розпізнано — сфотографуйте ближче, рівно і при хорошому світлі.',true)};fr.readAsDataURL(f)}
 function onCode(t){
-  t=String(t).trim().toUpperCase();stopScan();
+  t=String(t).trim().toUpperCase();if(SCAN_PAUSED&&SCAN_STREAM&&$('#sheet').classList.contains('open'))return;if(t===LAST_CODE&&Date.now()-LAST_AT<3000)return;LAST_CODE=t;LAST_AT=Date.now();if(SCAN_STREAM)SCAN_PAUSED=true;
   const m=t.match(/^KL0*(\d+)(?:-(.+))?$/);let p=m&&prod(+m[1]);
-  if(!p)p=S.products.find(x=>x.art&&x.art.toUpperCase()===t);
-  if(!p){toast('Невідомий код: '+t);return}
+  if(!p)p=S.products.find(x=>!x.deleted&&x.art&&x.art.toUpperCase()===t);
+  if(p&&p.deleted)p=null;
+  if(!p){toast('Невідомий код: '+t);SCAN_PAUSED=false;return}
   if(navigator.vibrate)try{navigator.vibrate(60)}catch(e){}
   openProd(p.id);const s=m&&m[2];
   if(s&&p.sizes.includes(s)){toast(`${t}\nРозмір ${s}: на складі ${p.qty[s]||0}, резерв ${reserved(p.id,s)}, вільно ${free(p,s)}`);const row=[...document.querySelectorAll('#panel tbody tr')].find(r=>r.firstElementChild&&r.firstElementChild.textContent.trim()===s);if(row){row.style.background='var(--warn-soft)';row.scrollIntoView({block:'center'})}}
@@ -709,7 +741,7 @@ function barcodesCsv(list,name){const q=v=>'"'+String(v??'').replace(/"/g,'""')+
 
 /* ---------- Історія ---------- */
 function vJournal(){const T={in:'Прихід',out:'Відвантаження',ret:'Повернення',adj:'Коригування'};
-  const ops=S.ops.slice(0,40).map(o=>[o.d,`${T[o.t]}: ${prod(o.pid)?.name||''} · ${o.size} · ${o.t==='adj'?'залишок ':''}${o.q} шт (${o.who})`]);
+  const ops=S.ops.filter(o=>T[o.t]).slice(0,40).map(o=>[o.d,`${T[o.t]}: ${prod(o.pid)?.name||''} · ${o.size} · ${o.t==='adj'?'залишок ':''}${o.q} шт (${o.who})`]);
   const all=[...S.feed,...ops].sort((a,b)=>b[0].localeCompare(a[0]));
   return `<div class="panel">${all.map(([d,m])=>`<div class="row"><div class="grow">${esc(m)}</div><span class="hint" style="white-space:nowrap">${dShort(d)} ${d.slice(11)}</span></div>`).join('')}</div>`}
 
@@ -717,7 +749,7 @@ function vJournal(){const T={in:'Прихід',out:'Відвантаження',
 function vStats(){
   const done=S.orders.filter(o=>o.st==='done');const rev=done.reduce((a,o)=>a+oSum(o),0);
   const series=[['тра',186400],['чер',214900],['лип',158300],['сер',142700],['вер',228900],['жов',rev+196000]];const mx=Math.max(...series.map(s=>s[1]));
-  const P=S.products;const units=P.reduce((a,p)=>a+tQty(p),0),val=P.reduce((a,p)=>a+tQty(p)*p.price,0),cost=P.reduce((a,p)=>a+tQty(p)*p.cost,0);
+  const P=S.products.filter(p=>!p.deleted);const units=P.reduce((a,p)=>a+tQty(p),0),val=P.reduce((a,p)=>a+tQty(p)*p.price,0),cost=P.reduce((a,p)=>a+tQty(p)*p.cost,0);
   const byG={};P.forEach(p=>{byG[p.grp]=(byG[p.grp]||0)+tQty(p)*p.price});const gm=Math.max(...Object.values(byG));
   const szD={'40':6,'42':14,'44':21,'46':17,'48':9,'50':4,'52':2};const szM=21;
   const ch={site:61,insta:18,viber:6,phone:5,opt:10};
@@ -747,7 +779,7 @@ function openSettings(){
 
 /* ---------- вікно ---------- */
 function sheet(eye,title,body,same){$('#panel').innerHTML=`<div class="ph${same?' same':''}"><div style="flex:1;min-width:0">${same?`<h3>${title}</h3><h3>${eye}</h3>`:`<div class="eye">${eye}</div><h3>${title}</h3>`}</div><button class="x" data-act="close" aria-label="Закрити">×</button></div>${body}`;$('#sheet').classList.add('open');$('#panel').scrollTop=0}
-function closeSheet(){$('#sheet').classList.remove('open');D=null}
+function closeSheet(){$('#sheet').classList.remove('open');D=null;if(SCAN_STREAM&&TAB==='scan')setTimeout(()=>{SCAN_PAUSED=false;LAST_AT=Date.now()},400)}
 $('#sheet').addEventListener('click',e=>{if(e.target.id==='sheet')closeSheet()});
 document.addEventListener('keydown',e=>{if(e.key==='Escape'){closeCf();closeSheet()}});
 
@@ -755,7 +787,7 @@ document.addEventListener('keydown',e=>{if(e.key==='Escape'){closeCf();closeShee
 document.addEventListener('click',e=>{
   const pop=$('#cfPop');if(pop&&!pop.contains(e.target)&&!e.target.closest('[data-cf]'))closeCf();
   const t=e.target.closest('[data-tab],[data-cf],[data-cfclr],[data-cfx],[data-of],[data-open],[data-order],[data-act],[data-more],[data-pick]');if(!t)return;const ds=t.dataset;
-  if(ds.tab){stopScan();TAB=ds.tab;Q='';$('#q').value='';closeSheet();render();scrollTo(0,0);return}
+  if(ds.tab){if(ds.tab!=='scan')stopScan();TAB=ds.tab;Q='';$('#q').value='';closeSheet();render();scrollTo(0,0);if(TAB==='scan')autoCam();return}
   if(ds.cf){if(pop&&pop.dataset.k===ds.cf)return closeCf();return openCf(ds.cf,t)}
   if(ds.cfclr){Object.keys(CF).forEach(k=>CF[k]=[]);render();return}
   if(ds.cfx)return applyCf(ds.cfx==='clear');
@@ -772,6 +804,9 @@ function act(a,ds){
   if(a==='newOrder')return newOrder(ds.pid);
   if(a==='newProd')return newSku();
   if(a==='saveSku')return saveSku();
+  if(a==='editSku')return newSku(+ds.id);
+  if(a==='backProd'){NS=null;return openProd(+ds.id)}
+  if(a==='delSku')return delSku(+ds.id,$('#delBtn'));
   if(a==='gal'){const p=prod(LQ.pid);if(p&&p.photos){$('#pBig').src=p.photos[+ds.i];document.querySelectorAll('.gal img').forEach((x,i)=>x.classList.toggle('on',i===+ds.i))}return}
   if(a==='phadd')return $('#nP').click();
   if(a==='phrm'){NS.photos.splice(+ds.i,1);return drawPh()}
@@ -783,8 +818,7 @@ function act(a,ds){
   if(a==='lq'){LQ[ds.s]=Math.max(0,(LQ[ds.s]||0)+(+ds.d));return openLabels(LQ.pid)}
   if(a==='lprint')return labelsPdf(prod(LQ.pid),LQ);
   if(a==='cam')return startScan();
-  if(a==='snap')return $('#snapIn').click();
-  if(a==='bcAll')return barcodesCsv(S.products,'Штрихкоди Калина — усі.csv');
+  if(a==='bcAll')return barcodesCsv(S.products.filter(p=>!p.deleted),'Штрихкоди Калина — усі.csv');
   if(a==='bcF')return barcodesCsv(catList(),'Штрихкоди Калина — вибірка.csv');
   if(a==='open')return openProd(+ds.id);
   if(a==='exp')return toast('У демо файл не формується');
@@ -814,7 +848,6 @@ document.addEventListener('input',e=>{if(['pC','pR','pO'].includes(e.target.id))
 document.addEventListener('change',e=>{if(e.target.id==='nG'){$('#nOwnL').hidden=e.target.value!=='own';drawNQty();return}if(e.target.id==='nP'){readPhotos(e.target.files);e.target.value='';return}});
 document.addEventListener('input',e=>{if(e.target.id==='nOwn')drawNQty()});
 document.addEventListener('keydown',e=>{if(e.key==='Enter'&&e.target.id==='scanIn'){e.preventDefault();act('scan',{})}});
-document.addEventListener('change',e=>{if(e.target.id==='snapIn'){snapDecode(e.target.files[0]);e.target.value=''}});
 document.addEventListener('change',e=>{if(e.target.id==='dC'){syncDraft();drawDraft()}});
 $('#q').addEventListener('input',e=>{Q=e.target.value.trim();LIMIT=60;if(TAB==='catalog'){drawHead();$('#view').innerHTML=vCatalog()}else if(TAB==='orders'||TAB==='pay'){$('#view').innerHTML=TAB==='orders'?vOrders():vPay()}});
 $('#addBtn').onclick=()=>act($('#addBtn').dataset.act,{});
@@ -824,7 +857,7 @@ const rs=$('#roleSel');rs.innerHTML=Object.entries(ROLES).map(([k,r])=>`<option 
 rs.onchange=()=>{S.role=rs.value;closeSheet();Object.keys(CF).forEach(k=>CF[k]=[]);OF='';Q='';$('#q').value='';render();toast(ROLE_DESC[S.role])};
 render();
 // мініатюри — окремим файлом, щоб сторінка відкривалась одразу
-(function(){const s=document.createElement('script');s.src='thumbs.js';s.onload=()=>{Object.assign(TH,window.KALYNA_THUMBS||{});S.products.forEach(p=>{if(p.photo)TH[p.id]=p.photo});if(!$('#sheet').classList.contains('open'))$('#view').innerHTML={catalog:vCatalog,orders:vOrders,pay:vPay,scan:vScan,journal:vJournal,stats:vStats,export:vExport}[TAB]()};document.body.appendChild(s)})();
+(function(){const s=document.createElement('script');s.src='thumbs.js';s.onload=()=>{Object.assign(TH,window.KALYNA_THUMBS||{});S.products.forEach(p=>{if(p.photo)TH[p.id]=p.photo;else if(p.noPhoto)delete TH[p.id]});if(!$('#sheet').classList.contains('open'))$('#view').innerHTML={catalog:vCatalog,orders:vOrders,pay:vPay,scan:vScan,journal:vJournal,stats:vStats,export:vExport}[TAB]()};document.body.appendChild(s)})();
 </script>
 
 </body></html>
