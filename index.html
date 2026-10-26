@@ -516,6 +516,7 @@ let NS=null;
 const nextSkuId=()=>Math.max(...S.products.filter(p=>p.id<9000).map(p=>p.id))+1;
 function parseGrid(t){const sizes=[],extra={};(t||'').split(',').map(x=>x.trim()).filter(Boolean).forEach(x=>{const m=x.match(/^([^+]+?)\s*(?:\+\s*(\d+))?$/);if(m){sizes.push(m[1].trim());if(m[2])extra[m[1].trim()]=+m[2]}});if(!sizes.length)sizes.push('—');return {sizes,extra}}
 const canEditSku=()=>can('stock')||can('cost');
+const isAdm=()=>S.role==='admin';
 const gridText=p=>p.sizes[0]==='—'?'':p.sizes.map(s=>p.extra[s]?s+'+'+p.extra[s]:s).join(',');
 function newSku(editId){const cats=[...new Set(S.products.map(p=>p.cat))].sort((a,b)=>a.localeCompare(b,'uk'));
   const E=editId?prod(editId):null;
@@ -527,18 +528,18 @@ function newSku(editId){const cats=[...new Set(S.products.map(p=>p.cat))].sort((
   <label class="f" style="margin-bottom:10px">Назва<input id="nN" placeholder="напр. Жіноча лляна вишиванка «Калина»" autocomplete="off" value="${E?esc(E.name):''}"></label>
   <div class="f2"><label class="f">Артикул<input id="nA" placeholder="напр. KS0203160" autocomplete="off" value="${E?esc(E.art||''):''}"></label><label class="f">Категорія<select id="nC">${cats.map(c=>`<option ${c===(E?E.cat:'Вишиті жіночі сорочки')?'selected':''}>${esc(c)}</option>`).join('')}</select></label></div>
   <div class="f2"><label class="f">Розмірна сітка<select id="nG">${GRIDS.map(([k,l])=>`<option value="${k}" ${k===NS.grid?'selected':''}>${l}</option>`).join('')}</select></label><label class="f" id="nOwnL" ${NS.grid==='own'?'':'hidden'}>Розміри через кому, доплата через «+»<input id="nOwn" placeholder="напр. 42,44,46,48+100" value="${E?esc(gridText(E)):''}"></label></div>
-  ${E?'<p class="hint" style="margin:-4px 0 10px">Розмір можна додати будь-коли; прибрати — лише якщо його немає на складі й у резерві. Кількість змінюється через «Операція» в картці.</p>':''}
+  ${E?(isAdm()?'<p class="hint" style="margin:-4px 0 10px">Права адміна: змінюються всі поля, розміри, залишки й ціни без обмежень.</p>':'<p class="hint" style="margin:-4px 0 10px">Розмір можна додати будь-коли; прибрати — лише якщо його немає на складі й у резерві. Кількість змінюється через «Операція» в картці.</p>'):''}
   <div id="nQty"></div>
-  ${E?'':can('cost')?`<div class="f2"><label class="f">Собівартість, грн<input id="nCo" type="number" min="0" inputmode="numeric"></label><label class="f">Ціна продажу (роздріб), грн<input id="nR" type="number" min="0" inputmode="numeric"></label></div>
-  <div class="f2"><label class="f">Оптова ціна, грн<input id="nO" type="number" min="0" inputmode="numeric" placeholder="за замовчуванням −22%"></label><label class="f">Стара ціна (для знижки), грн<input id="nOld" type="number" min="0" inputmode="numeric" placeholder="без знижки"></label></div>`:'<p class="hint">Ціни внесе власник або бухгалтер — до того модель буде з позначкою «без ціни».</p>'}${E&&can('cost')?'<p class="hint">Ціни змінюються в блоці «Ціни» в картці товару.</p>':''}
+  ${E&&!isAdm()?'':can('cost')?`<div class="f2"><label class="f">Собівартість, грн<input id="nCo" type="number" min="0" inputmode="numeric" value="${E&&E.cost?E.cost:''}"></label><label class="f">Ціна продажу (роздріб), грн<input id="nR" type="number" min="0" inputmode="numeric" value="${E&&E.price?E.price:''}"></label></div>
+  <div class="f2"><label class="f">Оптова ціна, грн<input id="nO" type="number" min="0" inputmode="numeric" placeholder="за замовчуванням −22%" value="${E&&E.opt?E.opt:''}"></label><label class="f">Стара ціна (для знижки), грн<input id="nOld" type="number" min="0" inputmode="numeric" placeholder="без знижки" value="${E&&E.old?E.old:''}"></label></div>`:'<p class="hint">Ціни внесе власник або бухгалтер — до того модель буде з позначкою «без ціни».</p>'}${E&&can('cost')&&!isAdm()?'<p class="hint">Ціни змінюються в блоці «Ціни» в картці товару.</p>':''}
     <label style="display:flex;gap:8px;align-items:center;font-size:13px;margin:4px 0 10px"><input id="nSite" type="checkbox" ${!E||E.onSite?'checked':''} style="width:16px;height:16px;accent-color:var(--ink)"> Показувати на сайті, коли з’явиться залишок</label>
   <div class="acts"><button class="btn red" data-act="saveSku">${E?'Зберегти зміни':'Зберегти SKU'}</button><button class="btn ghost" data-act="${E?'backProd':'close'}" data-id="${E?E.id:''}">Скасувати</button></div>`);
   drawNQty();drawPh();
 }
 function drawPh(){const el=$('#nPh');if(!el)return;el.innerHTML=[0,1,2].map(i=>NS.photos[i]?`<div class="phslot"><img src="${NS.photos[i]}" alt="">${i===0?'<span class="main">головне</span>':''}<button class="rm" data-act="phrm" data-i="${i}" aria-label="Прибрати фото">×</button></div>`:`<div class="phslot" data-act="phadd" role="button" tabindex="0">+ Фото</div>`).join('')}
 function nsGrid(){const g=$('#nG').value;NS.grid=g;return g==='own'?parseGrid($('#nOwn').value):parseGrid((GRIDS.find(x=>x[0]===g)||[])[2])}
-function drawNQty(){if(NS&&NS.edit){$('#nQty').innerHTML='';return}const {sizes,extra}=nsGrid();const old={};document.querySelectorAll('[data-nq]').forEach(i=>old[i.dataset.nq]=i.value);
-  $('#nQty').innerHTML=`<div class="hint" style="margin-bottom:4px">Прихід по розмірах, шт (можна лишити 0 і провести пізніше)</div><div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px">${sizes.map(s=>`<label class="f" style="width:72px">${s==='—'?'кількість':esc(s)}${extra[s]?' <span style="color:var(--soft)">+'+extra[s]+'</span>':''}<input data-nq="${esc(s)}" type="number" min="0" inputmode="numeric" value="${old[s]||0}"></label>`).join('')}</div>`}
+function drawNQty(){if(NS&&NS.edit&&!isAdm()){$('#nQty').innerHTML='';return}const {sizes,extra}=nsGrid();const old={};const EP=NS&&NS.edit?prod(NS.edit):null;if(EP)sizes.forEach(s=>old[s]=EP.qty[s]||0);document.querySelectorAll('[data-nq]').forEach(i=>old[i.dataset.nq]=i.value);
+  $('#nQty').innerHTML=`<div class="hint" style="margin-bottom:4px">${EP?'Залишок на складі по розмірах, шт':'Прихід по розмірах, шт (можна лишити 0 і провести пізніше)'}</div><div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px">${sizes.map(s=>`<label class="f" style="width:76px;white-space:nowrap">${s==='—'?'кількість':esc(s)}${extra[s]?'<span style="color:var(--soft);font-size:10.5px"> +'+extra[s]+'</span>':''}<input data-nq="${esc(s)}" type="number" min="0" inputmode="numeric" value="${old[s]||0}"></label>`).join('')}</div>`}
 function saveSku(){const name=$('#nN').value.trim();if(name.length<3)return toast('Вкажіть назву моделі');
   if(NS&&NS.edit)return saveSkuEdit(name);
   const {sizes,extra}=nsGrid();const qty={};sizes.forEach(s=>{const i=document.querySelector(`[data-nq="${CSS.escape(s)}"]`);qty[s]=Math.max(0,parseInt(i&&i.value)||0)});
@@ -550,23 +551,29 @@ function saveSku(){const name=$('#nN').value.trim();if(name.length<3)return toas
   S.products.unshift(p);PI.set(id,p);if(p.photo)TH[id]=p.photo;log(`Нове SKU ${p.code}: ${name}`);NS=null;changed();
   Object.keys(CF).forEach(k=>CF[k]=[]);Q='';$('#q').value='';render();openProd(id);toast(`SKU ${p.code} створено${tQty(p)?' · прихід '+tQty(p)+' шт':''}`)}
 function saveSkuEdit(name){const p=prod(NS.edit),who=ROLES[S.role].person;const {sizes,extra}=nsGrid();
-  const gone=p.sizes.filter(s=>!sizes.includes(s));const busy=gone.filter(s=>(p.qty[s]||0)>0||reserved(p.id,s)>0);
+  const gone=p.sizes.filter(s=>!sizes.includes(s));const busy=isAdm()?[]:gone.filter(s=>(p.qty[s]||0)>0||reserved(p.id,s)>0);
   if(busy.length)return toast(`Не можна прибрати розмір ${busy.join(', ')}: він є на складі або в резерві`);
   const ch=[];const art=$('#nA').value.trim(),cat=$('#nC').value,onSite=$('#nSite').checked;
   if(name!==p.name)ch.push('назва');if(art!==(p.art||''))ch.push(`артикул ${p.art||'—'} → ${art||'—'}`);if(cat!==p.cat)ch.push(`категорія → ${cat}`);
   if(gridText({sizes,extra})!==gridText(p))ch.push(`розміри: ${sizes[0]==='—'?'один розмір':sizes.join(', ')}`);if(onSite!==p.onSite)ch.push(onSite?'показано на сайті':'приховано на сайті');
   const old=JSON.stringify(p.photos&&p.photos.length?p.photos:TH[p.id]?[TH[p.id]]:[]);if(old!==JSON.stringify(NS.photos))ch.push('фото');
+  const qty={};sizes.forEach(s=>qty[s]=p.qty[s]||0);const adj=[];let pr=null;
+  if(isAdm()){sizes.forEach(s=>{const i=document.querySelector(`[data-nq="${CSS.escape(s)}"]`);const n=Math.max(0,parseInt(i&&i.value)||0);if(n!==qty[s]){adj.push([s,n]);qty[s]=n}});
+    gone.forEach(s=>{if(p.qty[s])adj.push([s,0])});if(adj.length)ch.push('залишки: '+adj.map(([s,n])=>(s==='—'?'':s+' → ')+n).join(', '));
+    const v=id=>{const e=$(id);return e?Math.max(0,parseInt(e.value)||0):0};const c=v('#nCo'),r=v('#nR'),old=v('#nOld');let o=v('#nO');if(!o&&r)o=Math.round(r*.78/5)*5;
+    if(old&&old<=r)return toast('Стара ціна має бути більшою за ціну продажу');
+    if(c!==p.cost||r!==p.price||o!==p.opt||old!==(p.old||0)){pr={cost:c,price:r,opt:o,old};ch.push(`ціни: роздріб ${r}, опт ${o}, собівартість ${c}${old?', стара '+old:''}`)}}
   if(!ch.length){toast('Змін немає');return openProd(p.id)}
-  const qty={};sizes.forEach(s=>qty[s]=p.qty[s]||0);
-  Object.assign(p,{name,art,cat,grp:GROUP(cat),onSite,sizes,extra,qty,photos:NS.photos.slice(),photo:NS.photos[0]||'',noPhoto:!NS.photos.length});
+  Object.assign(p,{name,art,cat,grp:GROUP(cat),onSite,sizes,extra,qty,photos:NS.photos.slice(),photo:NS.photos[0]||'',noPhoto:!NS.photos.length},pr||{});
+  adj.forEach(([s,n])=>S.ops.unshift({d:nowStr(),pid:p.id,size:s,q:n,t:'adj',who,note:'Коригування картки'}));
   if(p.photo)TH[p.id]=p.photo;else delete TH[p.id];
   S.ops.unshift({d:nowStr(),pid:p.id,size:'',q:0,t:'edit',who,note:ch.join(', ')});log(`Картку ${p.code} змінено: ${ch.join(', ')}`);
   NS=null;LQ={};changed();render();openProd(p.id);toast('Картку збережено')}
 function delSku(id,btn){const p=prod(id);
   const inOrders=S.orders.some(o=>['new','conf','packed','sent'].includes(o.st)&&o.lines.some(l=>l.pid===id));
-  if(tQty(p)>0)return toast(`Спершу обнуліть залишок: на складі ${tQty(p)} од.\nКоригування → 0 по кожному розміру`);
-  if(inOrders)return toast('Модель є в активному замовленні — видалити не можна');
-  if(!btn.classList.contains('arm')){btn.classList.add('arm');btn.textContent='Точно видалити? Натисніть ще раз';clearTimeout(btn._t);btn._t=setTimeout(()=>{btn.classList.remove('arm');btn.textContent='Видалити картку'},3500);return}
+  if(!isAdm()&&tQty(p)>0)return toast(`Спершу обнуліть залишок: на складі ${tQty(p)} од.\nКоригування → 0 по кожному розміру`);
+  if(!isAdm()&&inOrders)return toast('Модель є в активному замовленні — видалити не можна');
+  if(!btn.classList.contains('arm')){btn.classList.add('arm');btn.textContent=tQty(p)?`Видалити разом із залишком ${tQty(p)} од.?`:'Точно видалити? Натисніть ще раз';clearTimeout(btn._t);btn._t=setTimeout(()=>{btn.classList.remove('arm');btn.textContent='Видалити картку'},3500);return}
   p.deleted=true;p.onSite=false;S.ops.unshift({d:nowStr(),pid:id,size:'',q:0,t:'del',who:ROLES[S.role].person,note:'Картку видалено'});log(`Картку ${p.code} видалено: ${p.name}`);
   changed();closeSheet();render();toast(`Картку ${p.code} видалено`)}
 function readPhotos(files){[...files].slice(0,3-NS.photos.length).forEach(f=>{const r=new FileReader();r.onload=()=>{const im=new Image();im.onload=()=>{if(NS.photos.length>=3)return;const W=240,H=360,c=document.createElement('canvas');c.width=W;c.height=H;const g=c.getContext('2d');const k=Math.max(W/im.width,H/im.height),w=im.width*k,h=im.height*k;g.drawImage(im,(W-w)/2,(H-h)/2,w,h);NS.photos.push(c.toDataURL('image/webp',.75));drawPh()};im.src=r.result};r.readAsDataURL(f)})}
